@@ -37,7 +37,7 @@ fi
 if grep -q '\-Dvulkan=enabled' "$BS/scripts/mpv.sh"; then
     ok "[2/10] mpv.sh: vulkan=enabled (已应用)"
 else
-    sed -i '/-Dmanpage-build=disabled/a\\\t-Dvulkan=enabled' "$BS/scripts/mpv.sh"
+    sed -i '/-Dmanpage-build=disabled/a\    -Dvulkan=enabled' "$BS/scripts/mpv.sh"
     ok "[2/10] mpv.sh: + vulkan=enabled"
 fi
 
@@ -163,7 +163,7 @@ fi
 if grep -q '\-Daaudio=enabled' "$BS/scripts/mpv.sh"; then
     ok "[10/10] mpv.sh: aaudio=enabled (已应用)"
 else
-    sed -i '/-Dlibmpv=true -Dcplayer=false/a\\\t-Daaudio=enabled' "$BS/scripts/mpv.sh"
+    sed -i '/-Dlibmpv=true -Dcplayer=false/a\    -Daaudio=enabled' "$BS/scripts/mpv.sh"
     ok "[10/10] mpv.sh: + aaudio=enabled"
 fi
 
