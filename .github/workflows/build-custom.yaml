@@ -2,16 +2,21 @@ name: Build custom libmpv-android
 
 # 手动触发(Actions 页面点 "Run workflow")。如需每次 push main 自动构建, 取消注释 push 段。
 # 免费开源项目: 用默认 ubuntu-latest(2 核/7GB), 付费 runner 型号不启用。
+# 构建成功后自动创建 GitHub Release(附 AAR), 方便随时下载。
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
+    inputs:
+      version:
+        description: 'Release 版本号(留空自动: custom-r<run_number>)。需为合法 git tag, 勿含空格。'
+        required: false
+        default: ''
 
 jobs:
   build:
     name: Build arm64 (Vulkan + OpenSSL + AAudio)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -83,3 +88,29 @@ jobs:
         with:
           name: libmpv-release.aar
           path: ./libmpv/build/outputs/aar/libmpv-release.aar
+
+      # 解析 release tag: 手动填的 version 优先, 否则 custom-r<run_number>(run_number 单调递增, 不会重复)
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            TAG="${{ github.event.inputs.version }}"
+          else
+            TAG="custom-r${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: UnU-Player libmpv ${{ steps.tag.outputs.tag }}
+          body: |
+            UnU-Player 定制 libmpv(arm64-v8a, Vulkan + OpenSSL + AAudio)
+
+            - 基线: 上游 main(ffmpeg 8.1.2 / mpv 0.41.0)
+            - 补丁: `apply-custom-patches.sh` 9 步(libplacebo vulkan / OpenSSL TLS / shaderc / GitHub 依赖源)
+            - 验证: Vulkan 符号 + libvulkan.so 依赖 + aaudio 后端 均硬检查通过
+            - 用法: 覆盖 `tools/libmpv/maven/dev/jdtech/mpv/libmpv/1.0.0/libmpv-1.0.0.aar`(pom 不变)
+          files: libmpv/build/outputs/aar/libmpv-release.aar
