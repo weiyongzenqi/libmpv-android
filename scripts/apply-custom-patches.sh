@@ -124,10 +124,11 @@ export ANDROID_API=26
 ./Configure "$osl_target" \
 	-D__ANDROID_API__=26 \
 	--prefix="$prefix_dir" \
-	no-shared no-tests no-makedepend no-ssl3 no-comp \
-	-j"$cores"
+	no-shared no-tests no-makedepend no-ssl3 no-comp
 
-make -j"$cores"
+# 注意: Configure 不接 -j(make 会把它当编译选项传给 clang → "unknown argument: -j4")。
+# 并行交给下方 make 的 -j"$cores"。
+make -j"$cores" 2>/dev/null || make
 make install_sw
 OPENSSL_EOF
     chmod +x "$BS/scripts/openssl.sh"
