@@ -61,18 +61,22 @@ jobs:
         working-directory: ./buildscripts
         run: ./build.sh --arch arm64
 
-      # 复刻 build-libmpv.sh Phase 7: 验证 Vulkan 已编入 libmpv.so
+      # 复刻 build-libmpv.sh Phase 7: 验证 Vulkan 已编入 libmpv.so。
+      # 硬失败: vulkan 靠 mpv auto 检测, 若检测失败这里必须拦住, 不能静默出货。
       - name: Verify Vulkan linkage
         run: |
           unzip -o -j libmpv/build/outputs/aar/libmpv-release.aar "jni/arm64-v8a/libmpv.so" -d /tmp/libmpv-verify
-          echo "vulkan symbols: $(nm -D /tmp/libmpv-verify/libmpv.so | grep -c ' vk' || true)"
-          echo "libvulkan.so dep: $(readelf -d /tmp/libmpv-verify/libmpv.so | grep -c libvulkan.so || true)"
+          VK_SYMS=$(nm -D /tmp/libmpv-verify/libmpv.so | grep -c ' vk' || true)
+          VK_DEP=$(readelf -d /tmp/libmpv-verify/libmpv.so | grep -c libvulkan.so || true)
+          echo "vulkan symbols: $VK_SYMS, libvulkan.so dep: $VK_DEP"
+          [ "$VK_SYMS" -gt 0 ] && [ "$VK_DEP" -gt 0 ] || { echo "::error::Vulkan 未编入 libmpv.so"; exit 1; }
 
-      # aaudio 运行期 dlopen libaaudio.so, 编译后二进制内应含该库名字符串
+      # aaudio 运行期 dlopen libaaudio.so, 编译后二进制内应含该库名字符串。硬失败同上。
       - name: Verify AAudio support
         run: |
-          echo "libaaudio.so refs: $(strings /tmp/libmpv-verify/libmpv.so | grep -c '^libaaudio.so$' || true)"
-          echo "aaudio symbols: $(nm -D /tmp/libmpv-verify/libmpv.so | grep -c aaudio || true)"
+          AA_STR=$(strings /tmp/libmpv-verify/libmpv.so | grep -c '^libaaudio.so$' || true)
+          echo "libaaudio.so refs: $AA_STR"
+          [ "$AA_STR" -gt 0 ] || { echo "::error::AAudio 后端未编入 libmpv.so"; exit 1; }
 
       - name: Upload AAR artifact
         uses: actions/upload-artifact@v7

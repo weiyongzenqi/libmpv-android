@@ -2,11 +2,16 @@
 # =============================================================
 # UnU-Player 定制补丁: 启用 Vulkan(HDR) + ffmpeg TLS 后端 mbedtls→OpenSSL + AAudio 音频后端
 #
-# 与主仓 build-libmpv.sh 的 9 处差异一一对应(1-9), 补丁 10 为 CI 新增的 aaudio 支持。
 # 全部幂等(已应用则跳过), 目标行漂移时 warn 而非静默失败。
 #
-# aaudio 说明: mpv 的 aaudio 后端运行时 dlopen("libaaudio.so") 加载 Android 系统库,
-#   编译期只需 aaudio/AAudio.h 头文件(NDK r29 sysroot 自带), 无需交叉编译 oboe。
+# ★ 为什么不需要改 mpv.sh?
+#   mpv 的 vulkan / aaudio 选项默认值都是 auto:
+#   - vulkan: libplacebo 编了 vulkan(补丁 1)则 pkg-config pl_has_vulkan=1,
+#     mpv auto 检测到即启用(NDK sysroot 自带 vulkan/vulkan_core.h)。
+#   - aaudio: 目标系统 android + NDK sysroot 自带 aaudio/AAudio.h, auto 即启用。
+#   实证: 用户本地 v1.0.0 构建的 mpv.sh 从未被改过(无 -Dvulkan/-Daaudio),
+#   而 AAR 带 Vulkan(HDR 真机验证)。本脚本刻意不动 mpv.sh, 避免任何续行/转义问题。
+#   缺失兜底: CI 的 Verify Vulkan / Verify AAudio 步骤会硬失败, 不会静默出货。
 #
 # 用法: 在 fork 仓库根目录执行 ./scripts/apply-custom-patches.sh
 # =============================================================
@@ -23,63 +28,55 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 err()   { echo -e "${RED}[ERR]${NC}   $*"; }
 die()   { err "$*"; exit 1; }
 
-# 补丁 1: libplacebo vulkan=enabled
+# 补丁 1: libplacebo vulkan=enabled(让 mpv 的 vulkan=auto 检测到 pl_has_vulkan=1)
 if grep -q '\-Dvulkan=disabled' "$BS/scripts/libplacebo.sh"; then
     sed -i 's/-Dvulkan=disabled/-Dvulkan=enabled/' "$BS/scripts/libplacebo.sh"
-    ok "[1/10] libplacebo.sh: vulkan=disabled → enabled"
+    ok "[1/9] libplacebo.sh: vulkan=disabled → enabled"
 elif grep -q '\-Dvulkan=enabled' "$BS/scripts/libplacebo.sh"; then
-    ok "[1/10] libplacebo.sh: vulkan=enabled (已应用)"
+    ok "[1/9] libplacebo.sh: vulkan=enabled (已应用)"
 else
-    warn "[1/10] libplacebo.sh: 未找到 vulkan 配置行"
+    warn "[1/9] libplacebo.sh: 未找到 vulkan 配置行"
 fi
 
-# 补丁 2: mpv vulkan=enabled
-if grep -q '\-Dvulkan=enabled' "$BS/scripts/mpv.sh"; then
-    ok "[2/10] mpv.sh: vulkan=enabled (已应用)"
-else
-    sed -i '/-Dmanpage-build=disabled/a\    -Dvulkan=enabled' "$BS/scripts/mpv.sh"
-    ok "[2/10] mpv.sh: + vulkan=enabled"
-fi
-
-# 补丁 3: depinfo shaderc
+# 补丁 2: depinfo shaderc(libplacebo vulkan 依赖 shaderc)
 if grep -q '^dep_libplacebo=(shaderc)' "$BS/include/depinfo.sh"; then
-    ok "[3/10] depinfo.sh: dep_libplacebo=(shaderc) (已应用)"
+    ok "[2/9] depinfo.sh: dep_libplacebo=(shaderc) (已应用)"
 else
     sed -i 's/^dep_libplacebo=()/dep_libplacebo=(shaderc)/' "$BS/include/depinfo.sh"
-    ok "[3/10] depinfo.sh: dep_libplacebo=(shaderc)"
+    ok "[2/9] depinfo.sh: dep_libplacebo=(shaderc)"
 fi
 
-# 补丁 4: abiFilters arm64 only
+# 补丁 3: abiFilters arm64 only
 if grep -q 'abiFilters' "$REPO/libmpv/build.gradle.kts"; then
-    ok "[4/10] build.gradle.kts: abiFilters arm64 (已应用)"
+    ok "[3/9] build.gradle.kts: abiFilters arm64 (已应用)"
 else
     sed -i '/consumerProguardFiles/a\        ndk {\n            abiFilters += "arm64-v8a"\n        }' \
         "$REPO/libmpv/build.gradle.kts"
-    ok "[4/10] build.gradle.kts: + abiFilters arm64-v8a"
+    ok "[3/9] build.gradle.kts: + abiFilters arm64-v8a"
 fi
 
-# 补丁 5: depinfo mbedtls→openssl(版本/依赖/ffmpeg 后端)
+# 补丁 4: depinfo mbedtls→openssl(版本/依赖/ffmpeg 后端)
 if grep -q '^v_openssl=' "$BS/include/depinfo.sh"; then
-    ok "[5/10] depinfo.sh: v_openssl 已存在"
+    ok "[4/9] depinfo.sh: v_openssl 已存在"
 else
     sed -i 's/^v_mbedtls=.*/v_openssl=3.5.0/' "$BS/include/depinfo.sh"
     sed -i 's/^dep_mbedtls=()/dep_openssl=()/' "$BS/include/depinfo.sh"
     sed -i 's/^dep_ffmpeg=(mbedtls /dep_ffmpeg=(openssl /' "$BS/include/depinfo.sh"
-    ok "[5/10] depinfo.sh: mbedtls→openssl"
+    ok "[4/9] depinfo.sh: mbedtls→openssl"
 fi
 
-# 补丁 6: download-deps mbedtls clone→openssl clone(整行替换, 修正 owner/URL/目录名)
+# 补丁 5: download-deps mbedtls clone→openssl clone(整行替换, 官方仓库, deps/openssl)
 if grep -q 'Mbed-TLS/mbedtls.git' "$BS/include/download-deps.sh"; then
     sed -i '/Mbed-TLS\/mbedtls.git/c\[ ! -d openssl ] && git clone --depth 1 --branch openssl-$v_openssl https://github.com/openssl/openssl.git openssl' \
         "$BS/include/download-deps.sh"
-    ok "[6/10] download-deps.sh: mbedtls clone→openssl clone(官方仓库, deps/openssl)"
+    ok "[5/9] download-deps.sh: mbedtls clone→openssl clone(官方仓库, deps/openssl)"
 elif grep -q 'openssl/openssl.git' "$BS/include/download-deps.sh"; then
-    ok "[6/10] download-deps.sh: openssl clone 已存在"
+    ok "[5/9] download-deps.sh: openssl clone 已存在"
 else
-    warn "[6/10] download-deps.sh: 未找到 mbedtls clone 行"
+    warn "[5/9] download-deps.sh: 未找到 mbedtls clone 行"
 fi
 
-# 补丁 6b: download-deps 的 code.videolan.org → GitHub 镜像
+# 补丁 6: download-deps 的 code.videolan.org → GitHub 镜像
 # (GitHub Actions runner 连 code.videolan.org 会超时; dav1d 用官方镜像, libplacebo 用作者
 #  haasn 镜像且其 submodule 全部在 GitHub, --recurse-submodules 可达)
 if grep -q 'code.videolan.org' "$BS/include/download-deps.sh"; then
@@ -87,26 +84,26 @@ if grep -q 'code.videolan.org' "$BS/include/download-deps.sh"; then
         "$BS/include/download-deps.sh"
     sed -i 's|https://code.videolan.org/videolan/libplacebo.git|https://github.com/haasn/libplacebo.git|' \
         "$BS/include/download-deps.sh"
-    ok "[6b/10] download-deps.sh: videolan.org → GitHub 镜像(dav1d/libplacebo)"
+    ok "[6/9] download-deps.sh: videolan.org → GitHub 镜像(dav1d/libplacebo)"
 elif grep -q 'github.com/haasn/libplacebo' "$BS/include/download-deps.sh"; then
-    ok "[6b/10] download-deps.sh: GitHub 镜像已应用"
+    ok "[6/9] download-deps.sh: GitHub 镜像已应用"
 else
-    warn "[6b/10] download-deps.sh: 未找到 code.videolan.org 行"
+    warn "[6/9] download-deps.sh: 未找到 code.videolan.org 行"
 fi
 
 # 补丁 7: ffmpeg mbedtls→openssl
 if grep -q 'mbedtls' "$BS/scripts/ffmpeg.sh"; then
     sed -i 's/mbedtls/openssl/g' "$BS/scripts/ffmpeg.sh"
-    ok "[7/10] ffmpeg.sh: mbedtls→openssl"
+    ok "[7/9] ffmpeg.sh: mbedtls→openssl"
 elif grep -q 'openssl' "$BS/scripts/ffmpeg.sh"; then
-    ok "[7/10] ffmpeg.sh: openssl (已应用)"
+    ok "[7/9] ffmpeg.sh: openssl (已应用)"
 else
-    warn "[7/10] ffmpeg.sh: 未找到 mbedtls/openssl 配置行"
+    warn "[7/9] ffmpeg.sh: 未找到 mbedtls/openssl 配置行"
 fi
 
 # 补丁 8: 新建 openssl.sh(不存在才建)
 if [[ -f "$BS/scripts/openssl.sh" ]]; then
-    ok "[8/10] openssl.sh: 已存在"
+    ok "[8/9] openssl.sh: 已存在"
 else
     cat > "$BS/scripts/openssl.sh" << 'OPENSSL_EOF'
 #!/bin/bash -e
@@ -147,24 +144,15 @@ make -j"$cores" 2>/dev/null || make
 make install_sw
 OPENSSL_EOF
     chmod +x "$BS/scripts/openssl.sh"
-    ok "[8/10] openssl.sh: 新建"
+    ok "[8/9] openssl.sh: 新建"
 fi
 
 # 补丁 9: 删除 mbedtls.sh(存在才删)
 if [[ -f "$BS/scripts/mbedtls.sh" ]]; then
     rm "$BS/scripts/mbedtls.sh"
-    ok "[9/10] mbedtls.sh: 已删除"
+    ok "[9/9] mbedtls.sh: 已删除"
 else
-    ok "[9/10] mbedtls.sh: 已无此文件"
-fi
-
-# 补丁 10: mpv aaudio 音频后端
-# mpv 编译期仅需 aaudio/AAudio.h(NDK sysroot 自带)做符号检测, 运行期 dlopen 系统 libaaudio.so。
-if grep -q '\-Daaudio=enabled' "$BS/scripts/mpv.sh"; then
-    ok "[10/10] mpv.sh: aaudio=enabled (已应用)"
-else
-    sed -i '/-Dlibmpv=true -Dcplayer=false/a\    -Daaudio=enabled' "$BS/scripts/mpv.sh"
-    ok "[10/10] mpv.sh: + aaudio=enabled"
+    ok "[9/9] mbedtls.sh: 已无此文件"
 fi
 
 echo ""
