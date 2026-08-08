@@ -1,0 +1,74 @@
+name: Build custom libmpv-android
+
+# 手动触发(Actions 页面点 "Run workflow")。如需每次 push main 自动构建, 取消注释 push 段。
+# 免费开源项目: 用默认 ubuntu-latest(2 核/7GB), 付费 runner 型号不启用。
+on:
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #     - main
+
+jobs:
+  build:
+    name: Build arm64 (Vulkan + OpenSSL + AAudio)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Symlink SDK
+        working-directory: ./buildscripts
+        run: |
+          mkdir sdk
+          ln -s ${ANDROID_HOME} ./sdk/android-sdk-linux
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf pkgconf libtool ninja-build python3-pip python3-jinja2 gperf nasm
+          sudo pip3 install --break-system-packages meson
+
+      - name: Download dependencies
+        working-directory: ./buildscripts
+        env:
+          IN_CI: 1
+        run: ./download.sh
+
+      - name: Apply upstream patches
+        working-directory: ./buildscripts
+        run: ./patch.sh
+
+      - name: Apply UnU-Player custom patches (Vulkan + OpenSSL + AAudio)
+        run: ./scripts/apply-custom-patches.sh
+
+      - name: Build arm64
+        working-directory: ./buildscripts
+        run: ./build.sh --arch arm64
+
+      # 复刻 build-libmpv.sh Phase 7: 验证 Vulkan 已编入 libmpv.so
+      - name: Verify Vulkan linkage
+        run: |
+          unzip -o -j libmpv/build/outputs/aar/libmpv-release.aar "jni/arm64-v8a/libmpv.so" -d /tmp/libmpv-verify
+          echo "vulkan symbols: $(nm -D /tmp/libmpv-verify/libmpv.so | grep -c ' vk' || true)"
+          echo "libvulkan.so dep: $(readelf -d /tmp/libmpv-verify/libmpv.so | grep -c libvulkan.so || true)"
+
+      # aaudio 运行期 dlopen libaaudio.so, 编译后二进制内应含该库名字符串
+      - name: Verify AAudio support
+        run: |
+          echo "libaaudio.so refs: $(strings /tmp/libmpv-verify/libmpv.so | grep -c '^libaaudio.so$' || true)"
+          echo "aaudio symbols: $(nm -D /tmp/libmpv-verify/libmpv.so | grep -c aaudio || true)"
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: libmpv-release.aar
+          path: ./libmpv/build/outputs/aar/libmpv-release.aar
