@@ -37,6 +37,12 @@ jobs:
           sudo apt-get install -y autoconf pkgconf libtool ninja-build python3-pip python3-jinja2 gperf nasm
           sudo pip3 install --break-system-packages meson
 
+      # 顺序关键: 自定义补丁必须先于 download.sh —— 补丁改了 download-deps.sh 的下载清单
+      # (mbedtls→openssl)与 depinfo.sh 版本, 下载阶段就要用改后的清单, 否则 build 时
+      # ffmpeg 依赖 openssl 但 deps/openssl 不存在 → "Target openssl not found"。
+      - name: Apply UnU-Player custom patches (Vulkan + OpenSSL + AAudio)
+        run: bash ./scripts/apply-custom-patches.sh
+
       - name: Download dependencies
         working-directory: ./buildscripts
         env:
@@ -46,9 +52,6 @@ jobs:
       - name: Apply upstream patches
         working-directory: ./buildscripts
         run: ./patch.sh
-
-      - name: Apply UnU-Player custom patches (Vulkan + OpenSSL + AAudio)
-        run: bash ./scripts/apply-custom-patches.sh
 
       - name: Build arm64
         working-directory: ./buildscripts

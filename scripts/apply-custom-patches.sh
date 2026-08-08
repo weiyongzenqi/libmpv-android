@@ -68,14 +68,15 @@ else
     ok "[5/10] depinfo.sh: mbedtls→openssl"
 fi
 
-# 补丁 6: download-deps mbedtls clone→openssl clone
-if grep -q 'openssl.git' "$BS/include/download-deps.sh"; then
+# 补丁 6: download-deps mbedtls clone→openssl clone(整行替换, 修正 owner/URL/目录名)
+if grep -q 'Mbed-TLS/mbedtls.git' "$BS/include/download-deps.sh"; then
+    sed -i '/Mbed-TLS\/mbedtls.git/c\[ ! -d openssl ] && git clone --depth 1 --branch openssl-$v_openssl https://github.com/openssl/openssl.git openssl' \
+        "$BS/include/download-deps.sh"
+    ok "[6/10] download-deps.sh: mbedtls clone→openssl clone(官方仓库, deps/openssl)"
+elif grep -q 'openssl/openssl.git' "$BS/include/download-deps.sh"; then
     ok "[6/10] download-deps.sh: openssl clone 已存在"
 else
-    sed -i 's|mbedtls.git|openssl.git|' "$BS/include/download-deps.sh"
-    sed -i 's|--branch v\$v_mbedtls --recurse-submodules|--branch openssl-\$v_openssl|' "$BS/include/download-deps.sh"
-    sed -i 's|mbedtls.git mbedtls|openssl.git openssl|' "$BS/include/download-deps.sh"
-    ok "[6/10] download-deps.sh: mbedtls clone→openssl clone"
+    warn "[6/10] download-deps.sh: 未找到 mbedtls clone 行"
 fi
 
 # 补丁 7: ffmpeg mbedtls→openssl
