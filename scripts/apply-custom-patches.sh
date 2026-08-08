@@ -79,6 +79,21 @@ else
     warn "[6/10] download-deps.sh: 未找到 mbedtls clone 行"
 fi
 
+# 补丁 6b: download-deps 的 code.videolan.org → GitHub 镜像
+# (GitHub Actions runner 连 code.videolan.org 会超时; dav1d 用官方镜像, libplacebo 用作者
+#  haasn 镜像且其 submodule 全部在 GitHub, --recurse-submodules 可达)
+if grep -q 'code.videolan.org' "$BS/include/download-deps.sh"; then
+    sed -i 's|https://code.videolan.org/videolan/dav1d.git|https://github.com/videolan/dav1d.git|' \
+        "$BS/include/download-deps.sh"
+    sed -i 's|https://code.videolan.org/videolan/libplacebo.git|https://github.com/haasn/libplacebo.git|' \
+        "$BS/include/download-deps.sh"
+    ok "[6b/10] download-deps.sh: videolan.org → GitHub 镜像(dav1d/libplacebo)"
+elif grep -q 'github.com/haasn/libplacebo' "$BS/include/download-deps.sh"; then
+    ok "[6b/10] download-deps.sh: GitHub 镜像已应用"
+else
+    warn "[6b/10] download-deps.sh: 未找到 code.videolan.org 行"
+fi
+
 # 补丁 7: ffmpeg mbedtls→openssl
 if grep -q 'mbedtls' "$BS/scripts/ffmpeg.sh"; then
     sed -i 's/mbedtls/openssl/g' "$BS/scripts/ffmpeg.sh"

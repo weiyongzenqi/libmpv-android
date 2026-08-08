@@ -47,7 +47,11 @@ jobs:
         working-directory: ./buildscripts
         env:
           IN_CI: 1
-        run: ./download.sh
+        run: |
+          ./download.sh
+          # shaderc 由 NDK 自带 sources/third_party/shaderc 编译, 但 build.sh 要求
+          # deps/shaderc 目录存在才构建("Target shaderc not found"); 只建目录, 零下载。
+          mkdir -p deps/shaderc
 
       - name: Apply upstream patches
         working-directory: ./buildscripts
