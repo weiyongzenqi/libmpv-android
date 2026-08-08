@@ -48,7 +48,7 @@ jobs:
         run: ./patch.sh
 
       - name: Apply UnU-Player custom patches (Vulkan + OpenSSL + AAudio)
-        run: ./scripts/apply-custom-patches.sh
+        run: bash ./scripts/apply-custom-patches.sh
 
       - name: Build arm64
         working-directory: ./buildscripts
